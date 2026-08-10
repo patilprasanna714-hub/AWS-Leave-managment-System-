@@ -1,118 +1,118 @@
-# SLAMS Frontend (Member 1 — Frontend & UI)
+# SLAMS Frontend
 
-Ye SLAMS project ka pura React frontend hai — Employee, Manager, aur HR Admin ke
-teeno dashboards ke saath. Abhi ye **mock data** pe chal raha hai, taaki tum aur
-poori team turant test kar sako, bina backend ka wait kiye.
+React frontend for the Smart Leave \& Absence Management System (SLAMS), covering
+all three roles defined in the Technical Implementation Document: Employee,
+Manager, and HR Admin.
 
-## 1. System pe install karo (ek baar hi)
+This is currently wired to a **mock API layer** so the UI can be developed,
+demoed, and reviewed independently of backend progress. Once the backend team
+delivers the real API, only one file needs to change (see "Connecting to the
+real backend" below) — the rest of the UI code stays as-is.
 
-1. Node.js install karo: https://nodejs.org (LTS version lo)
-2. Check karo terminal mein:
-   ```
-   node -v
-   npm -v
-   ```
+## Getting started
 
-## 2. Project run karo (local pe dekhne ke liye)
-
-Project folder khol ke terminal mein:
+**Prerequisites:** Node.js (LTS) installed — check with `node -v` and `npm -v`.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Terminal mein ek link aayega jaise `http://localhost:5173` — wo browser mein
-kholo. Login screen dikhega. Role dropdown se "Employee" / "Manager" / "HR Admin"
-choose karke sign in karo, teeno dashboards test kar sakte ho.
+Open the printed local URL (e.g. `http://localhost:5173`) in a browser. Sign in
+by selecting a role (Employee / Manager / HR Admin) — auth is mocked for now.
 
-## 3. Folder structure samajh lo
+## Project structure
 
 ```
 src/
-  api/mockApi.js        <- Saara "backend" abhi yahi hai (mock). Real API aane
-                            par sirf ye file change hogi, baaki UI code nahi.
-  context/AuthContext.jsx <- Login/role state
-  components/            <- Chhote reusable pieces (form, table, calendar, etc.)
+  api/mockApi.js         Mock backend layer (see mapping table below)
+  context/AuthContext.jsx Session/role state
+  components/             Reusable UI pieces (form, table, calendar, etc.)
   pages/
     Login.jsx
     EmployeeDashboard.jsx
     ManagerDashboard.jsx
     HRDashboard.jsx
-  App.jsx                <- Routing (kaunsa role kaunsa page dekhega)
+  App.jsx                 Routing and role-based route protection
 ```
 
-## 4. Team ke sath integration (important!)
+## Features by role
 
-`src/api/mockApi.js` mein har function ka naam Technical Doc ke Section 8
-(API Design) ke endpoint se match karta hai:
+**Employee** — leave balance cards, apply-leave form with automatic day
+calculation and balance/overlap validation, leave history with cancel action.
 
-| Function (frontend)     | Real endpoint (backend)                  | Kaun banayega |
-|--------------------------|-------------------------------------------|---------------|
-| `getBalances()`          | `GET /balances/{employee_id}`             | Chiranthan / Prasanna |
-| `getLeaveHistory()`      | `GET /leave-requests/{employee_id}`       | Prasanna |
-| `submitLeaveRequest()`   | `POST /leave-requests`                    | Prasanna |
-| `cancelLeaveRequest()`   | `POST /leave-requests/{id}/cancel`        | Prasanna |
-| `getPendingApprovals()`  | `GET /approvals/pending`                  | Prasanna |
-| `approveRequest()` / `rejectRequest()` | `GET /approve` / `GET /reject` | Prasanna |
-| `getCalendar()`          | `GET /calendar`                           | Chiranthan / Prasanna |
-| `getLeaveConfig()` / `updateLeaveConfig()` | `GET`/`PUT /config/leave-types` | HR Admin route |
-| `downloadReportCsv()`    | `GET /reports/leave-summary`              | Chiranthan / Prasanna |
+**Manager** — pending approvals list with approve/reject actions, team absence
+calendar.
 
-**Jab Member 2 (Sasikumar) API Gateway + Cognito ready kar de:**
-1. `mockApi.js` ke top pe `BASE_URL` ko real API Gateway invoke URL se replace karo
-2. Har function ke andar `await delay()` + mock logic hata ke `fetch(BASE_URL + '/route', ...)` daal do
-3. `AuthContext.jsx` mein mock `login()` ko Cognito hosted UI / Amplify Auth se replace karo
-4. **Baki UI code (components/pages) bilkul touch nahi karna padega** — kyunki
-   function names aur return shapes same rakhe hain.
+**HR Admin** — HR-level escalated approvals, org-wide absence calendar, leave
+policy configuration (HR approval threshold, manager timeout), CSV report
+download.
 
-Ye bhai teammates ko bhi bata dena — unhe pata chal jayega ki unki Lambda ka
-input/output kaisa hona chahiye, kyunki mock functions mein wahi shape hai.
+## Connecting to the real backend
 
-## 5. Production build banao
+Every function in `src/api/mockApi.js` is named and shaped to match an endpoint
+in the Technical Implementation Document (Section 8, API Design):
+
+|Frontend function|Backend endpoint|
+|-|-|
+|`getBalances()`|`GET /balances/{employee\\\_id}`|
+|`getLeaveHistory()`|`GET /leave-requests/{employee\\\_id}`|
+|`submitLeaveRequest()`|`POST /leave-requests`|
+|`cancelLeaveRequest()`|`POST /leave-requests/{id}/cancel`|
+|`getPendingApprovals()`|`GET /approvals/pending`|
+|`approveRequest()` / `rejectRequest()`|`GET /approve` / `GET /reject`|
+|`getCalendar()`|`GET /calendar`|
+|`getLeaveConfig()` / `updateLeaveConfig()`|`GET` / `PUT /config/leave-types`|
+|`downloadReportCsv()`|`GET /reports/leave-summary`|
+
+Once API Gateway and the Lambda functions are deployed:
+
+1. Set `BASE\\\_URL` at the top of `mockApi.js` to the API Gateway invoke URL.
+2. Inside each function, replace the mock logic with a `fetch()` call to the
+corresponding endpoint, keeping the function name and return shape
+unchanged.
+3. Replace the mock `login()` in `AuthContext.jsx` with Cognito Hosted UI or
+Amplify Auth.
+
+Because function signatures already match the API contract, no changes are
+required in `components/` or `pages/`.
+
+## Production build
 
 ```bash
 npm run build
 ```
 
-Isse `dist/` folder banega — yahi actual files hain jo S3 pe jayengi.
+Outputs static files to `dist/`.
 
-## 6. Amazon S3 pe deploy karo (Static Website Hosting)
+## Deploying to Amazon S3 (static website hosting)
 
-1. AWS Console → S3 → "Create bucket". Naam kuch bhi (globally unique), e.g.
-   `slams-frontend-f13`. Region: apni team ki AWS region.
-2. Bucket → **Permissions** tab → "Block public access" ko **uncheck/off** karo
-   (static site public honi chahiye) → save.
-3. Bucket → **Properties** tab → neeche scroll karo → "Static website hosting"
-   → Enable → Index document: `index.html` → Error document: `index.html`
-   (SPA routing ke liye zaroori — warna refresh pe 404 aayega).
-4. Bucket → **Permissions** → Bucket Policy mein ye daalo (bucket-name apna
-   daalna):
-   ```json
+1. Create an S3 bucket (globally unique name, e.g. `slams-frontend-f13`).
+2. Bucket → Permissions → disable "Block public access".
+3. Bucket → Properties → enable Static website hosting. Set index document to
+`index.html` and error document to `index.html` (required for SPA routing).
+4. Bucket → Permissions → Bucket Policy:
+
+```json
    {
      "Version": "2012-10-17",
-     "Statement": [
+     "Statement": \\\[
        {
          "Sid": "PublicReadGetObject",
          "Effect": "Allow",
-         "Principal": "*",
+         "Principal": "\\\*",
          "Action": "s3:GetObject",
-         "Resource": "arn:aws:s3:::slams-frontend-f13/*"
+         "Resource": "arn:aws:s3:::slams-frontend-f13/\\\*"
        }
      ]
    }
    ```
-5. `dist/` folder ke andar ki saari files upload karo (folder khud nahi,
-   uske andar wali files/folders — `index.html`, `assets/` etc.)
-6. Properties tab mein "Bucket website endpoint" wala URL milega — wahi
-   tumhara live link hai, team ke saath share kar do.
 
-Baad mein CloudFront (HTTPS ke liye) laga sakte ho — abhi ke liye ye
-S3 static hosting kaafi hai jaisa doc mein bhi likha hai (Section 9.3).
+5. Upload the contents of `dist/` (not the folder itself) to the bucket.
+6. The bucket's website endpoint (Properties tab) is the live URL.
 
-## 7. Agla step
+(CloudFront can be added later for HTTPS/caching per Section 9.3 of the
+Technical Implementation Document.)
 
-- Login karke teeno roles test karo (Employee / Manager / HR Admin)
-- Screenshots le ke team group mein daal do ki "frontend UI ready hai"
-- Sasikumar/Virajith isse dekh ke pata karenge ki API kaisi banani hai
-- Jab real API mile, sirf `mockApi.js` update karna hai (Section 4 dekho)
+
+
