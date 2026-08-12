@@ -37,9 +37,29 @@ As the **Cloud Architect** and **Backend Engineer** for this project, I was resp
   - `carryForwardAndSummary`: Automated weekly balance recrediting.
 - **Workflow Orchestration:** Designed and deployed the `SLAMS-Approval-Workflow` using **AWS Step Functions**, which manages the multi-level approval state machine (including wait-for-token callbacks, HR escalation branching, and 48-hour manager timeouts).
 
+## How It Works (Core Logic)
+
+### 1. Database Design (DynamoDB)
+The system relies on a NoSQL architecture using **Amazon DynamoDB** for high performance and scalability. 
+- **`leave_requests` table**: Stores every request. It utilizes a composite primary key (`employee_id` as partition key, `request_id` as sort key) and Global Secondary Indexes (GSIs) such as `status-start_date-index` to allow lightning-fast querying of overlapping leaves.
+- **`leave_balances` table**: Tracks the exact number of entitled, used, and carried-forward days per employee per year.
+
+### 2. Balance Calculation
+When an employee requests leave, the system executes real-time balance calculations:
+- The `submitLeaveRequest` Lambda retrieves the user's current year record from `leave_balances`.
+- It calculates `Days Remaining = (Entitled + Carry Forward) - Used`.
+- If the requested days exceed the remaining balance, the request is immediately intercepted and auto-rejected, preventing invalid requests from wasting manager time.
+- Upon final approval, the `finalizeApprovalRequest` Lambda safely deducts the exact number of days using atomic update operations to prevent race conditions.
+
+### 3. Overlap Detection
+To prevent employees from booking double-leaves:
+- The backend automatically queries the `leave_requests` DynamoDB table using the `status-start_date-index` GSI.
+- It scans for any `APPROVED` (or pending) leave records for that specific employee where the requested date range overlaps with an existing record.
+- If an overlap is detected, the system auto-rejects the request and sends a notification back to the employee.
+
 ## Setup & Deployment
 
-For full deployment instructions, please refer to the `Deployment_Instructions.md` file included in this repository.
+Deployment is handled via the AWS CLI and AWS Management Console. First, the DynamoDB tables are provisioned using the provided Node.js setup scripts. Once the database is live, the core logic is deployed as individual Lambda functions and orchestrated via the AWS Step Functions visual editor.
 
 ---
 *Built with ❤️ by Team Pressanna at F13 Technologies Pvt Ltd.*
