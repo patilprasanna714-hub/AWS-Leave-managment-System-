@@ -1,0 +1,251 @@
+{
+  "Comment": "SLAMS Leave Approval Workflow - Task Token pattern. Threshold (hr_approval_threshold_days) and timeout (manager_timeout_seconds) are NOT hardcoded here - they are read from leave_config by submitLeaveRequest and passed in as execution input, per TID section 5.3/6.2.",
+  "StartAt": "NotifyManagerAndWaitForDecision",
+  "States": {
+
+    "NotifyManagerAndWaitForDecision": {
+      "Type": "Task",
+      "Comment": "Fulfils 'Notify Manager (SNS)' + 'Wait for Task Token' - the Lambda publishes SNS, sends the SES approval-link email embedding $$.Task.Token, then returns immediately. Step Functions itself holds the execution open.",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${NotifyManagerLambdaArn}",
+        "Payload": {
+          "request_id.$": "$.request_id",
+          "employee_id.$": "$.employee_id",
+          "manager_id.$": "$.manager_id",
+          "taskToken.$": "$$.Task.Token"
+        }
+      },
+      "TimeoutSecondsPath": "$.manager_timeout_seconds",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 3,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "ResultPath": "$.error",
+          "Next": "ManagerInactionEscalation"
+        },
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "WorkflowError"
+        }
+      ],
+      "ResultPath": "$.decisionResult",
+      "Next": "ApplyManagerDecision"
+    },
+
+    "ApplyManagerDecision": {
+      "Type": "Pass",
+      "Parameters": {
+        "employee_id.$": "$.employee_id",
+        "request_id.$": "$.request_id",
+        "manager_id.$": "$.manager_id",
+        "num_days.$": "$.num_days",
+        "leave_type.$": "$.leave_type",
+        "hr_approval_threshold_days.$": "$.hr_approval_threshold_days",
+        "manager_timeout_seconds.$": "$.manager_timeout_seconds",
+        "hr_timeout_seconds.$": "$.hr_timeout_seconds",
+        "decision.$": "$.decisionResult.decision",
+        "escalated": false
+      },
+      "Next": "ManagerDecisionChoice"
+    },
+
+    "ManagerDecisionChoice": {
+      "Type": "Choice",
+      "Choices": [
+        { "Variable": "$.decision", "StringEquals": "approve", "Next": "DurationThresholdChoice" },
+        { "Variable": "$.decision", "StringEquals": "reject", "Next": "NotifyRejected" }
+      ],
+      "Default": "NotifyRejected"
+    },
+
+    "DurationThresholdChoice": {
+      "Type": "Choice",
+      "Comment": "Threshold compared dynamically via Path, NOT a literal 5 - matches TID 5.3 (leave_config-driven rules).",
+      "Choices": [
+        {
+          "And": [
+            { "Variable": "$.num_days", "IsPresent": true },
+            { "Variable": "$.num_days", "NumericGreaterThanPath": "$.hr_approval_threshold_days" }
+          ],
+          "Next": "NotifyHRAndWaitForDecision"
+        }
+      ],
+      "Default": "FinalApproval"
+    },
+
+    "NotifyHRAndWaitForDecision": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${NotifyHRAdminLambdaArn}",
+        "Payload": {
+          "request_id.$": "$.request_id",
+          "employee_id.$": "$.employee_id",
+          "taskToken.$": "$$.Task.Token",
+          "escalated.$": "$.escalated"
+        }
+      },
+      "TimeoutSecondsPath": "$.hr_timeout_seconds",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 3,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "ResultPath": "$.error",
+          "Next": "HRTimeoutUnresolved"
+        },
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "WorkflowError"
+        }
+      ],
+      "ResultPath": "$.decisionResult",
+      "Next": "ApplyHRDecision"
+    },
+
+    "ApplyHRDecision": {
+      "Type": "Pass",
+      "Parameters": {
+        "employee_id.$": "$.employee_id",
+        "request_id.$": "$.request_id",
+        "manager_id.$": "$.manager_id",
+        "num_days.$": "$.num_days",
+        "leave_type.$": "$.leave_type",
+        "decision.$": "$.decisionResult.decision"
+      },
+      "Next": "HRDecisionChoice"
+    },
+
+    "HRDecisionChoice": {
+      "Type": "Choice",
+      "Choices": [
+        { "Variable": "$.decision", "StringEquals": "approve", "Next": "FinalApproval" },
+        { "Variable": "$.decision", "StringEquals": "reject", "Next": "NotifyRejected" }
+      ],
+      "Default": "NotifyRejected"
+    },
+
+    "ManagerInactionEscalation": {
+      "Type": "Task",
+      "Comment": "48-hour manager timeout -> escalate to HR (TID section 6.2 step 8 / Section 11 edge case row 3).",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${EscalateToHRLambdaArn}",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.escalationResult",
+      "Retry": [
+        { "ErrorEquals": ["States.ALL"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2.0 }
+      ],
+      "Next": "SetEscalatedFlag"
+    },
+
+    "SetEscalatedFlag": {
+      "Type": "Pass",
+      "Parameters": {
+        "employee_id.$": "$.employee_id",
+        "request_id.$": "$.request_id",
+        "manager_id.$": "$.manager_id",
+        "num_days.$": "$.num_days",
+        "leave_type.$": "$.leave_type",
+        "hr_timeout_seconds.$": "$.hr_timeout_seconds",
+        "escalated": true
+      },
+      "Next": "NotifyHRAndWaitForDecision"
+    },
+
+    "HRTimeoutUnresolved": {
+      "Type": "Task",
+      "Comment": "HR also failed to respond within their window. Nobody above HR to escalate to, so this logs/alerts rather than looping forever - distinct from the manager-timeout path.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${EscalateToHRLambdaArn}",
+        "Payload": {
+          "employee_id.$": "$.employee_id",
+          "request_id.$": "$.request_id",
+          "unresolved_after_hr_timeout": true
+        }
+      },
+      "ResultPath": "$.hrTimeoutResult",
+      "Next": "WorkflowError"
+    },
+
+    "FinalApproval": {
+      "Type": "Task",
+      "Comment": "The single authorized writer of leave_balances.used (TID 5.4). Idempotent via conditional update inside the Lambda.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${FinalizeApprovalLambdaArn}",
+        "Payload.$": "$"
+      },
+      "Retry": [
+        { "ErrorEquals": ["States.ALL"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2.0 }
+      ],
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "WorkflowError" }
+      ],
+      "ResultPath": "$.finalizeResult",
+      "Next": "NotifyApproved"
+    },
+
+    "NotifyApproved": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${NotifyApprovedLambdaArn}",
+        "Payload": {
+          "employee_id.$": "$.employee_id",
+          "request_id.$": "$.request_id",
+          "template": "approved"
+        }
+      },
+      "End": true
+    },
+
+    "NotifyRejected": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${NotifyRejectedLambdaArn}",
+        "Payload": {
+          "employee_id.$": "$.employee_id",
+          "request_id.$": "$.request_id",
+          "template": "rejected"
+        }
+      },
+      "End": true
+    },
+
+    "WorkflowError": {
+      "Type": "Task",
+      "Comment": "Generic error sink - satisfies the 'Workflow error handling' task item. Notifies ops/HR that this request needs manual attention rather than failing silently.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${NotifyWorkflowErrorLambdaArn}",
+        "Payload": {
+          "employee_id.$": "$.employee_id",
+          "request_id.$": "$.request_id",
+          "template": "workflow_error",
+          "error.$": "$.error"
+        }
+      },
+      "End": true
+    }
+  }
+}
