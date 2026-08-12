@@ -109,38 +109,13 @@ This is the engine that handles the multi-level approvals.
 
 ---
 
-## Step 5: Setup Secrets Manager & SES (Your Cloud Architect Task)
+## Step 5: Handoff to Your Team!
 
-Since you are the Cloud Architect, you need to configure the security and notifications.
+Since your specific role is **Database and Leave Logic**, you are DONE once the DynamoDB tables are created and the Lambda functions are deployed in the AWS Console. 
 
-1. **Secrets Manager:** Go to AWS Secrets Manager -> **Store a new secret**. Choose "Other type of secret", select Plaintext, and type a random strong password. Name the secret `slams-approval-secret`.
-2. **SES (Email):** Go to Amazon SES -> **Verified identities**. Verify your Gmail address (and any teammates' emails you want to test with).
+**You do NOT need to create the API Gateway or provide an API URL.** That is the job of the person handling the Cloud Infrastructure.
 
----
-
-## Step 6: Setup API Gateway & Cognito (Your Cloud Architect Task)
-
-The final step of your architecture is securing the Lambdas behind an API and Auth.
-
-### 1. Amazon Cognito
-1. Go to Amazon Cognito and create a **User Pool**.
-2. Configure it to allow sign-in with Email.
-3. Create an App Client (no client secret needed for SPA).
-4. Go to the Users & Groups tab and create three groups: `Employee`, `Manager`, and `HRAdmin`.
-
-### 2. Amazon API Gateway
-1. Go to API Gateway and create a **REST API**.
-2. Create a **Cognito User Pool Authorizer** and link it to the User Pool you just made.
-3. Create the routes (`/leave-requests`, `/approve`, `/balances`, etc.) as defined in the document.
-4. For each route, set the Integration Request to **Lambda Function** and check the box for **Use Lambda Proxy integration** (this is CRITICAL so your code can read `event.body`).
-5. Point each route to the corresponding Lambda function you deployed in Step 3.
-6. Deploy the API to a stage (e.g., `dev`) and copy the Invoke URL.
-
----
-
-## Step 7: Handoff to Virajith!
-
-You have successfully deployed the entire backend and AWS infrastructure! 
+All you need to do is give them the names of the Lambda functions you deployed so they can connect them to the API Gateway.
 
 Send a message in your team chat:
-> *"Hey team, the backend is fully deployed. Virajith, the API Gateway is up and secured with Cognito. Here is the API URL: [Paste URL] and the Cognito Client ID: [Paste ID]. You can now connect the React frontend to the real AWS backend!"*
+> *"Hey team, my part is complete! The DynamoDB database is live, and all the backend leave logic Lambdas are deployed to the AWS account. Whoever is setting up the API Gateway, the Lambdas are ready for you to attach using Lambda Proxy Integration! Virajith, once the API Gateway is set up by them, you'll get the URL from them."*
