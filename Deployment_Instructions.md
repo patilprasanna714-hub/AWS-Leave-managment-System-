@@ -1,8 +1,8 @@
-# Ultimate Beginner's Guide to Deploying Your SLAMS Backend
+# Sasikumar's AWS Setup & Deployment Guide
 
-Don't worry if you've never used AWS before! This guide will walk you through every single step from scratch. As part of your internship at F13 Technologies, you've been assigned this backend task, and I've already written all the code for you. 
+Ah, my apologies Sasikumar! Since the document listed Prasanna as the backend engineer, I got confused. But since you provided the checklist, I understand you are handling the Lambda and Database work, **in addition** to your Cloud Architect responsibilities (API Gateway, Cognito, Secrets Manager).
 
-Here is exactly how you deploy it, step-by-step.
+I have already written all the Node.js code and scripts for the backend checklist you gave me. Here is your master guide to deploying that code AND setting up your specific AWS infrastructure.
 
 ---
 
@@ -103,13 +103,44 @@ This is the engine that handles the multi-level approvals.
 4. In the top middle, click on the **Code** tab to switch to the code view.
 5. On your computer, open the `Backend/step-functions.json` file. Copy all the text.
 6. Delete whatever is in the AWS Code box and **Paste** your code.
-7. Click the orange **Create** button. (If it asks for permissions, choose "Create new role").
+7. Click the orange **Config** or **Next** button.
+8. For the **State machine name**, type `SLAMS-Approval-Workflow`.
+9. Click the orange **Create** button. (If it asks for permissions, choose "Create new role").
 
 ---
 
-## Step 5: Handoff to Your Teammates!
+## Step 5: Setup Secrets Manager & SES (Your Cloud Architect Task)
 
-You have successfully deployed your backend code to AWS! Now you just need to tell your team so they can finish their parts.
+Since you are the Cloud Architect, you need to configure the security and notifications.
+
+1. **Secrets Manager:** Go to AWS Secrets Manager -> **Store a new secret**. Choose "Other type of secret", select Plaintext, and type a random strong password. Name the secret `slams-approval-secret`.
+2. **SES (Email):** Go to Amazon SES -> **Verified identities**. Verify your Gmail address (and any teammates' emails you want to test with).
+
+---
+
+## Step 6: Setup API Gateway & Cognito (Your Cloud Architect Task)
+
+The final step of your architecture is securing the Lambdas behind an API and Auth.
+
+### 1. Amazon Cognito
+1. Go to Amazon Cognito and create a **User Pool**.
+2. Configure it to allow sign-in with Email.
+3. Create an App Client (no client secret needed for SPA).
+4. Go to the Users & Groups tab and create three groups: `Employee`, `Manager`, and `HRAdmin`.
+
+### 2. Amazon API Gateway
+1. Go to API Gateway and create a **REST API**.
+2. Create a **Cognito User Pool Authorizer** and link it to the User Pool you just made.
+3. Create the routes (`/leave-requests`, `/approve`, `/balances`, etc.) as defined in the document.
+4. For each route, set the Integration Request to **Lambda Function** and check the box for **Use Lambda Proxy integration** (this is CRITICAL so your code can read `event.body`).
+5. Point each route to the corresponding Lambda function you deployed in Step 3.
+6. Deploy the API to a stage (e.g., `dev`) and copy the Invoke URL.
+
+---
+
+## Step 7: Handoff to Virajith!
+
+You have successfully deployed the entire backend and AWS infrastructure! 
 
 Send a message in your team chat:
-> *"Hey team, my backend Lambdas, DynamoDB tables, and Step Functions workflow are deployed to the AWS account. Sasikumar, my Lambdas are ready for you to attach to the API Gateway. Virajith, once Sasikumar sets up the API URLs, the endpoints will be ready for the frontend!"*
+> *"Hey team, the backend is fully deployed. Virajith, the API Gateway is up and secured with Cognito. Here is the API URL: [Paste URL] and the Cognito Client ID: [Paste ID]. You can now connect the React frontend to the real AWS backend!"*
