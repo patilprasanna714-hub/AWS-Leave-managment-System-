@@ -1,0 +1,100 @@
+{
+  "Comment": "SLAMS Approval Workflow",
+  "StartAt": "Notify Manager",
+  "States": {
+    "Notify Manager": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish.waitForTaskToken",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:REGION:ACCOUNT_ID:ManagerApprovalTopic",
+        "Message": {
+          "Input.$": "$",
+          "TaskToken.$": "$$.Task.Token"
+        }
+      },
+      "ResultPath": "$.managerDecision",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "Next": "Escalate to HR"
+        }
+      ],
+      "TimeoutSeconds": 172800,
+      "Next": "Manager Approved?"
+    },
+    "Manager Approved?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.managerDecision.approved",
+          "BooleanEquals": true,
+          "Next": "Leave Duration > 5 days?"
+        }
+      ],
+      "Default": "Notify Rejected"
+    },
+    "Leave Duration > 5 days?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.days_requested",
+          "NumericGreaterThan": 5,
+          "Next": "HR Approval"
+        }
+      ],
+      "Default": "Final Approval"
+    },
+    "HR Approval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish.waitForTaskToken",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:REGION:ACCOUNT_ID:HRApprovalTopic",
+        "Message": {
+          "Input.$": "$",
+          "TaskToken.$": "$$.Task.Token"
+        }
+      },
+      "ResultPath": "$.hrDecision",
+      "Next": "HR Approved?"
+    },
+    "HR Approved?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.hrDecision.approved",
+          "BooleanEquals": true,
+          "Next": "Final Approval"
+        }
+      ],
+      "Default": "Notify Rejected"
+    },
+    "Escalate to HR": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish.waitForTaskToken",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:REGION:ACCOUNT_ID:HREscalationTopic",
+        "Message": {
+          "Input.$": "$",
+          "TaskToken.$": "$$.Task.Token",
+          "Reason": "Manager Timeout - 48 Hours"
+        }
+      },
+      "ResultPath": "$.hrDecision",
+      "Next": "HR Approved?"
+    },
+    "Final Approval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "finalizeApprovalRequest",
+        "Payload.$": "$"
+      },
+      "End": true
+    },
+    "Notify Rejected": {
+      "Type": "Pass",
+      "Result": "Workflow Rejected",
+      "End": true
+    }
+  }
+}
