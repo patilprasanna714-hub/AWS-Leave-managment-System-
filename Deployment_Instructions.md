@@ -44,7 +44,7 @@ Before you can push the database setup to AWS, your computer needs a few tools.
 3. It will ask for 4 things. Paste the details Sasikumar gave you:
    - **AWS Access Key ID:** Paste your key and press Enter.
    - **AWS Secret Access Key:** Paste your secret and press Enter.
-   - **Default region name:** Type `us-east-1` and press Enter.
+   - **Default region name:** Type `ap-south-1` (Mumbai) and press Enter.
    - **Default output format:** Type `json` and press Enter.
 
 ---
