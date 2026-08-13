@@ -22,6 +22,9 @@ This project is built using a modern, serverless AWS architecture:
 
 As the **Cloud Architect** and **Backend Engineer** for this project, I was responsible for designing and deploying critical infrastructure and core business logic:
 
+## Chiranthan's contribution
+Designed and deployed the multi-level human-approval workflow for SLAMS using AWS Step Functions, implementing the Task Token (callback) pattern so the system can pause execution at zero compute cost while waiting on manager and HR decisions that may take hours or days.
+
 ### Cloud Infrastructure
 - **Authentication & Security:** Configured Amazon Cognito user pools and role groups (Employee, Manager, HRAdmin) to secure the application. Integrated AWS Secrets Manager for secure token handling.
 - **API Gateway:** Set up the API Gateway with Cognito Authorizers and integrated it with backend Lambdas using Proxy Integration.
