@@ -1,5 +1,5 @@
 import StatusPill from './StatusPill';
-import { cancelLeaveRequest } from '../api/mockApi';
+import { cancelLeaveRequest } from '../api/apiclient';
 
 export default function HistoryTable({ requests, onChanged }) {
   if (!requests.length) {

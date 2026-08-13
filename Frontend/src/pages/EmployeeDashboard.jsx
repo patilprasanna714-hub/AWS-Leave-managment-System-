@@ -4,7 +4,7 @@ import BalanceCard from '../components/BalanceCard';
 import LeaveForm from '../components/LeaveForm';
 import HistoryTable from '../components/HistoryTable';
 import { useAuth } from '../context/AuthContext';
-import { getBalances, getLeaveHistory } from '../api/mockApi';
+import { getBalances, getLeaveHistory } from '../api/apiclient';
 
 export default function EmployeeDashboard() {
   const { user } = useAuth();

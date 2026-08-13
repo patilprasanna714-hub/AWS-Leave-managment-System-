@@ -3,7 +3,7 @@ import Sidebar from '../components/Sidebar';
 import ApprovalsList from '../components/ApprovalsList';
 import AbsenceCalendar from '../components/AbsenceCalendar';
 import { useAuth } from '../context/AuthContext';
-import { getPendingApprovals, getCalendar } from '../api/mockApi';
+import { getPendingApprovals, getCalendar } from '../api/apiclient';
 
 export default function ManagerDashboard() {
   const { user } = useAuth();
@@ -11,7 +11,7 @@ export default function ManagerDashboard() {
   const [approved, setApproved] = useState([]);
 
   const refresh = useCallback(async () => {
-    const [p, a] = await Promise.all([getPendingApprovals(user.role), getCalendar()]);
+    const [p, a] = await Promise.all([getPendingApprovals(user.id), getCalendar()]);
     setPending(p);
     setApproved(a);
   }, [user.role]);
