@@ -91,11 +91,23 @@ exports.handler = async (event) => {
             updated_at: now
         };
 
+        // Prepare Step Functions Input exactly as Ayan requested
+        const sfnInput = {
+            request_id: request_id,
+            employee_id: employee_id,
+            manager_id: manager_id,
+            num_days: days_requested,
+            leave_type: leave_type.toUpperCase(),
+            hr_approval_threshold_days: configResult.Item.hr_approval_threshold_days || 5,
+            manager_timeout_seconds: configResult.Item.manager_timeout_seconds || 172800,
+            hr_timeout_seconds: configResult.Item.hr_timeout_seconds || 172800
+        };
+
         // Start Step Functions execution
         const sfnResponse = await sfnClient.send(new StartExecutionCommand({
             stateMachineArn: STATE_MACHINE_ARN,
             name: request_id, // Ensure uniqueness
-            input: JSON.stringify(requestItem)
+            input: JSON.stringify(sfnInput)
         }));
 
         requestItem.step_functions_execution_arn = sfnResponse.executionArn;

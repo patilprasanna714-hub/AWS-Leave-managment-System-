@@ -62,12 +62,12 @@ exports.handler = async (event) => {
             if (isApproved) {
                 await sfnClient.send(new SendTaskSuccessCommand({
                     taskToken: payload.taskToken,
-                    output: JSON.stringify({ approved: true, approver: payload.role })
+                    output: JSON.stringify({ decision: "approve", approver: payload.role })
                 }));
             } else {
-                await sfnClient.send(new SendTaskSuccessCommand({ // We can also use SendTaskSuccess and let SFN Branch, or SendTaskFailure
+                await sfnClient.send(new SendTaskSuccessCommand({ 
                     taskToken: payload.taskToken,
-                    output: JSON.stringify({ approved: false, approver: payload.role })
+                    output: JSON.stringify({ decision: "reject", approver: payload.role })
                 }));
             }
         } catch (sfnErr) {
