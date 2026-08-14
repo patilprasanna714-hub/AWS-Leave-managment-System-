@@ -14,14 +14,43 @@ const STATE_MACHINE_ARN = process.env.STATE_MACHINE_ARN; // Set in Lambda enviro
 
 exports.handler = async (event) => {
     try {
+        console.log('Received event:', JSON.stringify(event, null, 2));
+        
+        const path = event.rawPath || event.path || '';
+        const method = event.requestContext?.http?.method || event.httpMethod || 'POST';
+
         // Handle cancel request
-        if (event.httpMethod === 'POST' && event.path.endsWith('/cancel')) {
+        if (method === 'POST' && path.endsWith('/cancel')) {
             return await handleCancel(event);
         }
 
-        // Parse input
-        const body = JSON.parse(event.body);
+        // Handle new leave request submission
+        if (method !== 'POST' || !path.startsWith('/leave')) {
+            return { 
+                statusCode: 405, 
+                body: JSON.stringify({ error: 'Method not allowed' }),
+                headers: { 'Content-Type': 'application/json' }
+            };
+        }
+
+        // Parse input - handle base64 encoded body
+        let body;
+        if (typeof event.body === 'string') {
+            const bodyStr = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf-8') : event.body;
+            body = JSON.parse(bodyStr);
+        } else {
+            body = event.body;
+        }
+
         const { employee_id, leave_type, start_date, end_date, days_requested, reason, manager_id } = body;
+        
+        if (!employee_id || !leave_type || !start_date || !end_date || !days_requested) {
+            return { 
+                statusCode: 400, 
+                body: JSON.stringify({ error: 'Missing required fields' }),
+                headers: { 'Content-Type': 'application/json' }
+            };
+        }
         
         // 1. Validate leave_type against config
         const configResult = await ddbDocClient.send(new GetCommand({
@@ -30,7 +59,11 @@ exports.handler = async (event) => {
         }));
         
         if (!configResult.Item || !configResult.Item.is_active) {
-            return { statusCode: 400, body: JSON.stringify({ message: 'Invalid or inactive leave type' }) };
+            return { 
+                statusCode: 400, 
+                body: JSON.stringify({ error: 'Invalid or inactive leave type' }),
+                headers: { 'Content-Type': 'application/json' }
+            };
         }
 
         // 2. Read leave_balances
@@ -44,8 +77,9 @@ exports.handler = async (event) => {
         const daysRemaining = (balance.entitled + (balance.carry_forward || 0)) - (balance.used || 0);
 
         if (daysRemaining < days_requested) {
-            await sendRejectionEmail(employee_id, `Insufficient balance. You requested ${days_requested} but only have ${daysRemaining} days left.`);
-            return saveRequest(body, 'AUTO_REJECTED', 'Insufficient balance');
+            const rejectionMsg = `Insufficient balance. You requested ${days_requested} but only have ${daysRemaining} days left.`;
+            await sendRejectionEmail(employee_id, rejectionMsg);
+            return await saveRequest(body, 'AUTO_REJECTED', rejectionMsg);
         }
 
         // 3. Query leave_requests for date overlap
@@ -69,8 +103,9 @@ exports.handler = async (event) => {
         }));
 
         if (overlapResult.Items && overlapResult.Items.length > 0) {
-            await sendRejectionEmail(employee_id, 'Overlapping leave request found.');
-            return saveRequest(body, 'AUTO_REJECTED', 'Overlapping leave dates');
+            const rejectionMsg = 'Overlapping leave request found.';
+            await sendRejectionEmail(employee_id, rejectionMsg);
+            return await saveRequest(body, 'AUTO_REJECTED', 'Overlapping leave dates');
         }
 
         // 4. Happy Path - Write PENDING_MANAGER and Start Step Functions
@@ -91,37 +126,88 @@ exports.handler = async (event) => {
             updated_at: now
         };
 
-        // Prepare Step Functions Input exactly as Ayan requested
-        const sfnInput = {
-            request_id: request_id,
-            employee_id: employee_id,
-            manager_id: manager_id,
-            num_days: days_requested,
-            leave_type: leave_type.toUpperCase(),
-            hr_approval_threshold_days: configResult.Item.hr_approval_threshold_days || 5,
-            manager_timeout_seconds: configResult.Item.manager_timeout_seconds || 172800,
-            hr_timeout_seconds: configResult.Item.hr_timeout_seconds || 172800
-        };
+    try {
+        const request_id = event.pathParameters?.request_id;
+        
+        // Parse input - handle base64 encoded body
+        let body;
+        if (typeof event.body === 'string') {
+            const bodyStr = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf-8') : event.body;
+            body = JSON.parse(bodyStr);
+        } else {
+            body = event.body;
+        }
 
-        // Start Step Functions execution
-        const sfnResponse = await sfnClient.send(new StartExecutionCommand({
-            stateMachineArn: STATE_MACHINE_ARN,
-            name: request_id, // Ensure uniqueness
-            input: JSON.stringify(sfnInput)
+        const employee_id = body?.employee_id;
+
+        if (!request_id || !employee_id) {
+            return { 
+                statusCode: 400, 
+                body: JSON.stringify({ error: 'Missing request_id or employee_id' }),
+                headers: { 'Content-Type': 'application/json' }
+            };
+        }
+
+        // Get the request to find the step function arn
+        const request = await ddbDocClient.send(new GetCommand({
+            TableName: 'leave_requests',
+            Key: { employee_id, request_id }
         }));
 
-        requestItem.step_functions_execution_arn = sfnResponse.executionArn;
-
+        if (!request.Item || (request.Item.status !== 'PENDING_MANAGER' && request.Item.status !== 'PENDING_HR')) {
+            return { 
+                statusCode: 400, 
+                body: JSON.stringify({ error: 'Can only cancel pending requests' }),
+                headers: { 'Content-Type': 'application/json' }
+    try {
+        const request_id = uuidv4();
+        const now = new Date().toISOString();
         await ddbDocClient.send(new PutCommand({
             TableName: 'leave_requests',
-            Item: requestItem
+            Item: {
+                employee_id: body.employee_id,
+                request_id,
+                leave_type: body.leave_type.toUpperCase(),
+                start_date: body.start_date,
+                end_date: body.end_date,
+                days_requested: body.days_requested,
+                manager_id: body.manager_id,
+                reason: body.reason,
+                status: status,
+                rejection_reason: rejectionReason,
+                created_at: now,
+                updated_at: now
+            }
         }));
-
-        return { statusCode: 201, body: JSON.stringify({ message: 'Request submitted', request_id }) };
+        return { 
+            statusCode: 200, 
+            body: JSON.stringify({ status, reason: rejectionReason }),
+            headers: { 'Content-Type': 'application/json' }
+        };
+    } catch (error) {
+        console.error('Error saving request:', error);
+        throw error;
+    }
+            body: JSON.stringify({ message: 'Request cancelled successfully' }),
+            headers: { 'Content-Type': 'application/json' }
+        };
+    } catch (error) {
+        console.error('Error cancelling request:', error);
+        return { 
+            statusCode: 500, 
+            body: JSON.stringify({ error: error.message || 'Internal Server Error' }),
+            headers: { 'Content-Type': 'application/json' }
+        };
+    }
+        };
         
     } catch (error) {
         console.error('Error:', error);
-        return { statusCode: 500, body: JSON.stringify({ message: 'Internal Server Error' }) };
+        return { 
+            statusCode: 500, 
+            body: JSON.stringify({ error: error.message || 'Internal Server Error' }),
+            headers: { 'Content-Type': 'application/json' }
+        };
     }
 };
 
@@ -138,20 +224,22 @@ async function handleCancel(event) {
 
     if (!request.Item || (request.Item.status !== 'PENDING_MANAGER' && request.Item.status !== 'PENDING_HR')) {
         return { statusCode: 400, body: JSON.stringify({ message: 'Can only cancel pending requests' }) };
-    }
-
-    if (request.Item.step_functions_execution_arn) {
-        await sfnClient.send(new StopExecutionCommand({
-            executionArn: request.Item.step_functions_execution_arn,
-            cause: 'Cancelled by employee'
+    }ployee_id, message) {
+    try {
+        console.log(`Sending rejection email to ${employee_id}: ${message}`);
+        await sesClient.send(new SendEmailCommand({
+            FromEmailAddress: SENDER_EMAIL,
+            Destination: { ToAddresses: [employee_id] },
+            Content: {
+                Simple: {
+                    Subject: { Data: 'Leave Request Update' },
+                    Body: { Text: { Data: message } }
+                }
+            }
         }));
-    }
-
-    await ddbDocClient.send(new UpdateCommand({
-        TableName: 'leave_requests',
-        Key: { employee_id, request_id },
-        UpdateExpression: 'SET #status = :status, updated_at = :updated_at',
-        ExpressionAttributeNames: { '#status': 'status' },
+    } catch (err) {
+        console.error('Failed to send email:', err);
+        // Don't throw - email failures shouldn't block the requestus' },
         ExpressionAttributeValues: { ':status': 'CANCELLED', ':updated_at': new Date().toISOString() }
     }));
 
