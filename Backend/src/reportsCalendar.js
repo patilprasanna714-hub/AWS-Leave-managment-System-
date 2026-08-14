@@ -1,7 +1,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 
-const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
+const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION || 'ap-south-1' });
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
 exports.handler = async (event) => {
@@ -88,7 +88,7 @@ async function getLeaveHistory(employee_id) {
 async function getPendingApprovals(manager_id) {
     try {
         if (!manager_id) {
-            return { statusCode: 400, body: JSON.stringify({ error: 'Missing manager_id' }) };
+            return { statusCode: 400, body: JSON.stringify({ error: 'Missing manager_id' }), headers: { 'Content-Type': 'application/json' } };
         }
         
         console.log(`Fetching pending approvals for manager: ${manager_id}`);
@@ -99,9 +99,22 @@ async function getPendingApprovals(manager_id) {
             ExpressionAttributeNames: { '#status': 'status' },
             ExpressionAttributeValues: { ':mgrId': manager_id, ':status': 'PENDING_MANAGER' }
         }));
+        console.log(`Successfully fetched pending approvals: ${JSON.stringify(result.Items)}`);
+        return { 
+            statusCode: 200, 
+            body: JSON.stringify(result.Items || []),
+            headers: { 'Content-Type': 'application/json' }
+        };
+    } catch (error) {
+        console.error(`Error fetching pending approvals for ${manager_id}:`, error);
+        throw error;
+    }
+}
+
+async function getCalendar(startDate, endDate) {
     try {
         if (!startDate || !endDate) {
-            return { statusCode: 400, body: JSON.stringify({ error: 'Missing start_date or end_date' }) };
+            return { statusCode: 400, body: JSON.stringify({ error: 'Missing start_date or end_date' }), headers: { 'Content-Type': 'application/json' } };
         }
 
         console.log(`Fetching calendar for dates: ${startDate} to ${endDate}`);
@@ -122,17 +135,4 @@ async function getPendingApprovals(manager_id) {
         console.error(`Error fetching calendar data:`, error);
         throw error;
     }
-}
-
-async function getCalendar(startDate, endDate) {
-    if (!startDate || !endDate) return { statusCode: 400, body: 'Missing start_date or end_date' };
-
-    const result = await ddbDocClient.send(new QueryCommand({
-        TableName: 'leave_requests',
-        IndexName: 'status-start_date-index',
-        KeyConditionExpression: '#status = :status AND start_date BETWEEN :start AND :end',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: { ':status': 'APPROVED', ':start': startDate, ':end': endDate }
-    }));
-    return { statusCode: 200, body: JSON.stringify(result.Items) };
 }
