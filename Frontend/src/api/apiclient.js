@@ -4,9 +4,11 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 // API CONFIGURATION
 // ============================================================
 
+const AWS_REGION = import.meta.env.VITE_AWS_REGION || 'ap-south-1';
+
 let API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  'https://0qg3z5d142.execute-api.ap-south-1.amazonaws.com';
+  `https://0qg3z5d142.execute-api.${AWS_REGION}.amazonaws.com`;
 
 // Remove accidental JavaScript assignment if it exists
 API_BASE_URL = API_BASE_URL
@@ -233,15 +235,22 @@ export async function getCalendar(startDate, endDate) {
 // ============================================================
 
 // GET /approve?token=...&action=approve
-export async function approveRequest(token) {
-  if (!token) {
-    throw new Error('Approval token is required.');
+// Accept either a signed approval token or a direct request_id.
+export async function approveRequest(tokenOrRequestId, role) {
+  if (!tokenOrRequestId) {
+    throw new Error('Approval target is required.');
   }
 
   const params = new URLSearchParams({
-    token,
     action: 'approve',
   });
+
+  if (typeof tokenOrRequestId === 'string' && tokenOrRequestId.includes('.')) {
+    params.set('token', tokenOrRequestId);
+  } else {
+    params.set('request_id', tokenOrRequestId);
+    if (role) params.set('role', role);
+  }
 
   return apiRequest(
     `/approve?${params.toString()}`
@@ -250,15 +259,21 @@ export async function approveRequest(token) {
 
 
 // GET /approve?token=...&action=reject
-export async function rejectRequest(token) {
-  if (!token) {
-    throw new Error('Approval token is required.');
+export async function rejectRequest(tokenOrRequestId, role) {
+  if (!tokenOrRequestId) {
+    throw new Error('Approval target is required.');
   }
 
   const params = new URLSearchParams({
-    token,
     action: 'reject',
   });
+
+  if (typeof tokenOrRequestId === 'string' && tokenOrRequestId.includes('.')) {
+    params.set('token', tokenOrRequestId);
+  } else {
+    params.set('request_id', tokenOrRequestId);
+    if (role) params.set('role', role);
+  }
 
   return apiRequest(
     `/approve?${params.toString()}`
@@ -283,6 +298,10 @@ export async function getHRCalendar(startDate, endDate) {
 
 
 // PUT /config/leave-types
+export async function getLeaveConfig() {
+  return apiRequest('/config/leave-types');
+}
+
 export async function updateLeaveConfig(payload) {
   if (!payload) {
     throw new Error(
@@ -294,4 +313,9 @@ export async function updateLeaveConfig(payload) {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
+}
+
+export async function downloadReportCsv() {
+  const result = await apiRequest('/reports/leave-summary');
+  return typeof result === 'string' ? result : JSON.stringify(result);
 }

@@ -9,7 +9,7 @@ import {
   getLeaveConfig,
   updateLeaveConfig,
   downloadReportCsv
-} from '../api/mockApi';
+} from '../api/apiclient';
 
 export default function HRDashboard() {
   const { user } = useAuth();
@@ -19,15 +19,19 @@ export default function HRDashboard() {
   const [savedMsg, setSavedMsg] = useState(false);
 
   const refresh = useCallback(async () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+
     const [p, a, c] = await Promise.all([
-      getPendingApprovals(user.role),
-      getCalendar(),
+      getPendingApprovals(user.id || user.employee_id || 'MGR-01'),
+      getCalendar(start, end),
       getLeaveConfig()
     ]);
     setPending(p);
     setApproved(a);
     setConfig(c);
-  }, [user.role]);
+  }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);
 

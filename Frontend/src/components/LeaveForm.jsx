@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { submitLeaveRequest } from '../api/apiclient';
 
+const DEFAULT_MANAGER_ID = 'MGR-01';
+
 function daysBetween(start, end) {
   if (!start || !end) return 0;
   const s = new Date(start);
@@ -42,7 +44,7 @@ export default function LeaveForm({ employeeId, onSubmitted }) {
         end_date: form.end_date,
         days_requested: days,
         reason: form.reason,
-        manager_id: 'MGR-01'
+        manager_id: DEFAULT_MANAGER_ID
       });
 
       if (result.status === 'AUTO_REJECTED') {

@@ -5,16 +5,26 @@ import AbsenceCalendar from '../components/AbsenceCalendar';
 import { useAuth } from '../context/AuthContext';
 import { getPendingApprovals, getCalendar } from '../api/apiclient';
 
+const DEFAULT_MANAGER_ID = 'MGR-01';
+
 export default function ManagerDashboard() {
   const { user } = useAuth();
   const [pending, setPending] = useState([]);
   const [approved, setApproved] = useState([]);
 
   const refresh = useCallback(async () => {
-    const [p, a] = await Promise.all([getPendingApprovals(user.id), getCalendar()]);
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+    const [p, a] = await Promise.all([
+      getPendingApprovals(DEFAULT_MANAGER_ID),
+      getCalendar(start, end),
+    ]);
+
     setPending(p);
     setApproved(a);
-  }, [user.role]);
+  }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
 
