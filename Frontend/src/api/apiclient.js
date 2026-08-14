@@ -159,7 +159,7 @@ export async function getLeaveHistory(employeeId) {
 }
 
 
-// POST /leave
+// POST /leave-requests
 export async function submitLeaveRequest(payload) {
   if (!payload) {
     throw new Error('Leave request data is required.');
@@ -167,21 +167,21 @@ export async function submitLeaveRequest(payload) {
 
   console.log('SUBMIT LEAVE PAYLOAD:', payload);
 
-  return apiRequest('/leave', {
+  return apiRequest('/leave-requests', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
 
-// POST /leave/{request_id}/cancel
+// POST /leave-requests/{request_id}/cancel
 export async function cancelLeaveRequest(requestId) {
   if (!requestId) {
     throw new Error('Request ID is required.');
   }
 
   return apiRequest(
-    `/leave/${encodeURIComponent(requestId)}/cancel`,
+    `/leave-requests/${encodeURIComponent(requestId)}/cancel`,
     {
       method: 'POST',
     }
