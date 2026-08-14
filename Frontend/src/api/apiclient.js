@@ -2,7 +2,7 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  'https://9jtnqows6b.execute-api.ap-south-1.amazonaws.com';
+  'https://0q3z55d142.execute-api.ap-south-1.amazonaws.com';
 
 console.log('REAL API CLIENT LOADED');
 console.log('API BASE URL:', API_BASE_URL);
