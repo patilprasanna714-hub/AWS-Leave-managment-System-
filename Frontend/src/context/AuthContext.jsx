@@ -34,8 +34,6 @@ export function AuthProvider({ children }) {
       const groups =
         session.tokens?.idToken?.payload?.['cognito:groups'] || [];
 
-        
-
       const role = getRoleFromGroups(groups);
 
       if (!role) {
@@ -46,11 +44,11 @@ export function AuthProvider({ children }) {
       }
 
       const loggedInUser = {
-  id: currentUser.userId,
-  employee_id: currentUser.userId,
-  email: currentUser.signInDetails?.loginId || '',
-  role,
-};
+        id: currentUser.userId,
+        employee_id: currentUser.userId,
+        email: currentUser.signInDetails?.loginId || '',
+        role,
+      };
 
       setUser(loggedInUser);
       return loggedInUser;
@@ -61,33 +59,34 @@ export function AuthProvider({ children }) {
   }
 
   async function login(email, password) {
-  try {
-    // Check whether another Cognito user is already signed in
     try {
-      await getCurrentUser();
-      await signOut();
-    } catch {
-      // No existing user — continue normally
+      // Check whether another Cognito user is already signed in
+      try {
+        await getCurrentUser();
+        await signOut();
+      } catch {
+        // No existing user — continue normally
+      }
+
+      const result = await signIn({
+        username: email,
+        password,
+      });
+
+      if (!result.isSignedIn) {
+        return {
+          needsConfirmation: true,
+          nextStep: result.nextStep,
+        };
+      }
+
+      return await loadCurrentUser();
+    } catch (error) {
+      console.error('Cognito login failed:', error);
+      throw error;
     }
-
-    const result = await signIn({
-      username: email,
-      password,
-    });
-
-    if (!result.isSignedIn) {
-      return {
-        needsConfirmation: true,
-        nextStep: result.nextStep,
-      };
-    }
-
-    return await loadCurrentUser();
-  } catch (error) {
-    console.error('Cognito login failed:', error);
-    throw error;
   }
-}
+
   async function logout() {
     try {
       await signOut();
