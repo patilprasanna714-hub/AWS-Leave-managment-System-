@@ -1,6 +1,6 @@
 const { DynamoDBClient, CreateTableCommand, PutItemCommand } = require('@aws-sdk/client-dynamodb');
 
-const client = new DynamoDBClient({ region: 'us-east-1' });
+const client = new DynamoDBClient({ region: 'ap-south-1' });
 
 async function createTable(params) {
   try {
