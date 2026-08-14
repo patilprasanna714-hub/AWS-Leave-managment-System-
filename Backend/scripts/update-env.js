@@ -3,7 +3,7 @@ const { LambdaClient, UpdateFunctionConfigurationCommand, GetFunctionConfigurati
 const REGION = process.env.AWS_REGION || 'ap-south-1';
 const lambdaClient = new LambdaClient({ region: REGION });
 
-const API_GATEWAY_URL = 'https://9jtnqows6b.execute-api.ap-south-1.amazonaws.com/approve';
+const API_GATEWAY_URL = 'https://0q3z55d142.execute-api.ap-south-1.amazonaws.com';
 
 async function updateEnv(functionName) {
     try {

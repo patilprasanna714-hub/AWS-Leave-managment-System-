@@ -46,10 +46,11 @@ export function AuthProvider({ children }) {
       }
 
       const loggedInUser = {
-        id: currentUser.userId,
-        email: currentUser.signInDetails?.loginId || '',
-        role,
-      };
+  id: currentUser.userId,
+  employee_id: currentUser.userId,
+  email: currentUser.signInDetails?.loginId || '',
+  role,
+};
 
       setUser(loggedInUser);
       return loggedInUser;

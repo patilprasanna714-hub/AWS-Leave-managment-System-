@@ -1,11 +1,35 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  'https://0q3z55d142.execute-api.ap-south-1.amazonaws.com';
+// ============================================================
+// API CONFIGURATION
+// ============================================================
 
-console.log('REAL API CLIENT LOADED');
+let API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  'https://0qg3z5d142.execute-api.ap-south-1.amazonaws.com';
+
+// Remove accidental JavaScript assignment if it exists
+API_BASE_URL = API_BASE_URL
+  .replace(/^const\s+API_GATEWAY_URL\s*=\s*/i, '')
+  .replace(/^VITE_API_BASE_URL\s*=\s*/i, '')
+  .trim();
+
+// Remove trailing slash
+API_BASE_URL = API_BASE_URL.replace(/\/+$/, '');
+
+// IMPORTANT:
+// API_BASE_URL must be the base URL, NOT /leave
+API_BASE_URL = API_BASE_URL.replace(/\/leave\/?$/i, '');
+
+console.log('========================================');
+console.log('SLAMS API CLIENT');
 console.log('API BASE URL:', API_BASE_URL);
+console.log('========================================');
+
+
+// ============================================================
+// AUTHENTICATION
+// ============================================================
 
 async function getAuthHeaders() {
   const session = await fetchAuthSession();
@@ -18,68 +42,100 @@ async function getAuthHeaders() {
 
   return {
     Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
   };
 }
 
+
+// ============================================================
+// GENERIC API REQUEST
+// ============================================================
+
 export async function apiRequest(path, options = {}) {
-  const url = `${API_BASE_URL}${path}`;
+  const cleanPath = path.startsWith('/')
+    ? path
+    : `/${path}`;
 
-  console.log('API REQUEST:', url);
-  console.log('API METHOD:', options.method || 'GET');
+  const url = `${API_BASE_URL}${cleanPath}`;
 
-  const headers = await getAuthHeaders();
+  console.log('----------------------------------------');
+  console.log('API REQUEST');
+  console.log('URL:', url);
+  console.log('METHOD:', options.method || 'GET');
+  console.log('----------------------------------------');
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...headers,
+  try {
+    const authHeaders = await getAuthHeaders();
+
+    const headers = {
+      ...authHeaders,
       ...(options.headers || {}),
-    },
-  });
+    };
 
-  console.log('API RESPONSE:', response.status, url);
-
-  if (!response.ok) {
-    let message = `API request failed (${response.status})`;
-
-    try {
-      const errorData = await response.json();
-
-      message =
-        errorData.message ||
-        errorData.error ||
-        errorData.detail ||
-        message;
-    } catch {
-      // Response was not JSON
+    if (options.body) {
+      headers['Content-Type'] = 'application/json';
     }
 
-    throw new Error(message);
+    const requestOptions = {
+      ...options,
+      cache: 'no-store',
+      headers,
+    };
+
+    const response = await fetch(url, requestOptions);
+
+    console.log('API RESPONSE:', response.status);
+    console.log('URL:', url);
+
+    if (!response.ok) {
+      let message = `API request failed (${response.status})`;
+
+      try {
+        const errorData = await response.json();
+
+        message =
+          errorData.message ||
+          errorData.error ||
+          errorData.detail ||
+          message;
+
+        console.error('API ERROR:', errorData);
+      } catch {
+        // Response isn't JSON
+      }
+
+      throw new Error(message);
+    }
+
+    if (response.status === 204) {
+      return null;
+    }
+
+    const contentType =
+      response.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      return await response.json();
+    }
+
+    return await response.text();
+
+  } catch (error) {
+    console.error('========================================');
+    console.error('API REQUEST FAILED');
+    console.error('URL:', url);
+    console.error('ERROR:', error);
+    console.error('========================================');
+
+    throw error;
   }
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  const contentType = response.headers.get('content-type');
-
-  if (contentType && contentType.includes('application/json')) {
-    return response.json();
-  }
-
-  return response.text();
 }
 
-/*
-|--------------------------------------------------------------------------
-| EMPLOYEE APIs
-|--------------------------------------------------------------------------
-*/
 
-/**
- * GET /balances/{employee_id}
- */
+// ============================================================
+// EMPLOYEE
+// ============================================================
+
+// GET /balances/{employee_id}
 export async function getBalances(employeeId) {
   if (!employeeId) {
     throw new Error('Employee ID is required.');
@@ -90,9 +146,8 @@ export async function getBalances(employeeId) {
   );
 }
 
-/**
- * GET /leave-requests/{employee_id}
- */
+
+// GET /leave-requests/{employee_id}
 export async function getLeaveHistory(employeeId) {
   if (!employeeId) {
     throw new Error('Employee ID is required.');
@@ -103,19 +158,23 @@ export async function getLeaveHistory(employeeId) {
   );
 }
 
-/**
- * POST /leave
- */
+
+// POST /leave
 export async function submitLeaveRequest(payload) {
+  if (!payload) {
+    throw new Error('Leave request data is required.');
+  }
+
+  console.log('SUBMIT LEAVE PAYLOAD:', payload);
+
   return apiRequest('/leave', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-/**
- * POST /leave/{request_id}/cancel
- */
+
+// POST /leave/{request_id}/cancel
 export async function cancelLeaveRequest(requestId) {
   if (!requestId) {
     throw new Error('Request ID is required.');
@@ -129,28 +188,28 @@ export async function cancelLeaveRequest(requestId) {
   );
 }
 
-/*
-|--------------------------------------------------------------------------
-| MANAGER / HR APIs
-|--------------------------------------------------------------------------
-*/
 
-/**
- * GET /approvals/pending?manager_id={manager_id}
- */
+// ============================================================
+// MANAGER
+// ============================================================
+
+// GET /approvals/pending?manager_id={manager_id}
 export async function getPendingApprovals(managerId) {
   if (!managerId) {
     throw new Error('Manager ID is required.');
   }
 
+  const params = new URLSearchParams({
+    manager_id: managerId,
+  });
+
   return apiRequest(
-    `/approvals/pending?manager_id=${encodeURIComponent(managerId)}`
+    `/approvals/pending?${params.toString()}`
   );
 }
 
-/**
- * GET /calendar?start_date={date}&end_date={date}
- */
+
+// GET /calendar?start_date={date}&end_date={date}
 export async function getCalendar(startDate, endDate) {
   if (!startDate || !endDate) {
     throw new Error(
@@ -163,37 +222,76 @@ export async function getCalendar(startDate, endDate) {
     end_date: endDate,
   });
 
-  return apiRequest(`/calendar?${params.toString()}`);
+  return apiRequest(
+    `/calendar?${params.toString()}`
+  );
 }
 
-/*
-|--------------------------------------------------------------------------
-| APPROVAL APIs
-|--------------------------------------------------------------------------
-*/
 
-/**
- * GET /approve?token={token}&action=approve
- */
+// ============================================================
+// APPROVAL
+// ============================================================
+
+// GET /approve?token=...&action=approve
 export async function approveRequest(token) {
   if (!token) {
     throw new Error('Approval token is required.');
   }
 
+  const params = new URLSearchParams({
+    token,
+    action: 'approve',
+  });
+
   return apiRequest(
-    `/approve?token=${encodeURIComponent(token)}&action=approve`
+    `/approve?${params.toString()}`
   );
 }
 
-/**
- * GET /approve?token={token}&action=reject
- */
+
+// GET /approve?token=...&action=reject
 export async function rejectRequest(token) {
   if (!token) {
     throw new Error('Approval token is required.');
   }
 
+  const params = new URLSearchParams({
+    token,
+    action: 'reject',
+  });
+
   return apiRequest(
-    `/approve?token=${encodeURIComponent(token)}&action=reject`
+    `/approve?${params.toString()}`
   );
+}
+
+
+// ============================================================
+// HR
+// ============================================================
+
+// GET /reports/leave-summary
+export async function getLeaveSummary() {
+  return apiRequest('/reports/leave-summary');
+}
+
+
+// HR calendar
+export async function getHRCalendar(startDate, endDate) {
+  return getCalendar(startDate, endDate);
+}
+
+
+// PUT /config/leave-types
+export async function updateLeaveConfig(payload) {
+  if (!payload) {
+    throw new Error(
+      'Leave configuration data is required.'
+    );
+  }
+
+  return apiRequest('/config/leave-types', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
 }
