@@ -1,5 +1,5 @@
 const { ApiGatewayV2Client, CreateApiCommand, CreateIntegrationCommand, CreateRouteCommand, CreateStageCommand } = require("@aws-sdk/client-apigatewayv2");
-const { LambdaClient, AddPermissionCommand } = require("@aws-sdk/client-lambda");
+const { LambdaClient, AddPermissionCommand, UpdateFunctionConfigurationCommand, GetFunctionConfigurationCommand } = require("@aws-sdk/client-lambda");
 const { STSClient, GetCallerIdentityCommand } = require("@aws-sdk/client-sts");
 
 const REGION = process.env.AWS_REGION || 'ap-south-1';
@@ -79,8 +79,8 @@ async function setupApiGateway() {
 
         // Attach Lambdas to their respective routes
         await attachLambdaToRoutes("submitLeaveRequest", [
-            "POST /leave",
-            "POST /leave/{request_id}/cancel"
+            "POST /leave-requests",
+            "POST /leave-requests/{request_id}/cancel"
         ]);
 
         await attachLambdaToRoutes("approveRejectRequest", [
@@ -108,16 +108,28 @@ async function setupApiGateway() {
         console.log("Send the following details to Virajith (Frontend Developer):\n");
         console.log(`1. Base API Gateway URL: ${apiEndpoint}\n`);
         console.log("2. Endpoints:");
-        console.log(`   - Submit Leave:        POST ${apiEndpoint}/leave`);
-        console.log(`   - Cancel Leave:        POST ${apiEndpoint}/leave/{request_id}/cancel`);
+        console.log(`   - Submit Leave:        POST ${apiEndpoint}/leave-requests`);
+        console.log(`   - Cancel Leave:        POST ${apiEndpoint}/leave-requests/{request_id}/cancel`);
         console.log(`   - Approve/Reject:      GET  ${apiEndpoint}/approve?token={token}&action={approve/reject}`);
         console.log(`   - View Balances:       GET  ${apiEndpoint}/balances/{employee_id}`);
         console.log(`   - View Leave History:  GET  ${apiEndpoint}/leave-requests/{employee_id}`);
         console.log(`   - Pending Approvals:   GET  ${apiEndpoint}/approvals/pending?manager_id={manager_id}`);
         console.log(`   - Company Calendar:    GET  ${apiEndpoint}/calendar?start_date={date}&end_date={date}\n`);
         
-        console.log("Next Steps for you:");
-        console.log(`Update your notifyManager.js and notifyHRAdmin.js environment variables in the AWS Console to set API_GATEWAY_URL to: ${apiEndpoint}/approve`);
+        console.log("Automatically updating notifyManager and notifyHRAdmin environment variables...");
+        for (const functionName of ['notifyManager', 'notifyHRAdmin']) {
+            try {
+                const config = await lambdaClient.send(new GetFunctionConfigurationCommand({ FunctionName: functionName }));
+                const existingEnv = config.Environment?.Variables || {};
+                await lambdaClient.send(new UpdateFunctionConfigurationCommand({
+                    FunctionName: functionName,
+                    Environment: { Variables: { ...existingEnv, API_GATEWAY_URL: `${apiEndpoint}/approve` } }
+                }));
+                console.log(`  ✓ Successfully updated API_GATEWAY_URL for ${functionName}`);
+            } catch (error) {
+                console.warn(`  ! Could not update environment for ${functionName}: ${error.message}`);
+            }
+        }
 
     } catch (error) {
         console.error("Error setting up API Gateway:", error);
