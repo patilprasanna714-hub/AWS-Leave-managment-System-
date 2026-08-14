@@ -14,9 +14,16 @@ const SECRET_NAME = process.env.TOKEN_SECRET_NAME || 'slams-approval-secret';
 
 exports.handler = async (event) => {
     try {
+        console.log('NotifyManager event:', JSON.stringify(event, null, 2));
+        
         const { request_id, employee_id, manager_id, taskToken } = event;
 
+        if (!request_id || !employee_id || !manager_id || !taskToken) {
+            throw new Error(`Missing required parameters: request_id=${request_id}, employee_id=${employee_id}, manager_id=${manager_id}, taskToken=${taskToken ? 'present' : 'missing'}`);
+        }
+
         // 1. Get Secret for signing tokens
+        console.log('Fetching secret from Secrets Manager...');
         const secretResult = await smClient.send(new GetSecretValueCommand({ SecretId: SECRET_NAME }));
         const secret = secretResult.SecretString;
 
@@ -32,6 +39,8 @@ exports.handler = async (event) => {
         const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64');
         const signature = crypto.createHmac('sha256', secret).update(payloadB64).digest('hex');
         const token = `${payloadB64}.${signature}`;
+
+        console.log(`Token generated for request ${request_id}`);
 
         // 3. Construct Approval Links
         const approveLink = `${API_GATEWAY_URL}?token=${encodeURIComponent(token)}&action=approve`;
@@ -57,6 +66,7 @@ exports.handler = async (event) => {
         `;
 
         // 4. Send SES Email (Assuming manager_id is their email for now)
+        console.log(`Sending email to manager: ${manager_id}`);
         await sesClient.send(new SendEmailCommand({
             FromEmailAddress: SENDER_EMAIL,
             Destination: { ToAddresses: [manager_id] }, 
@@ -71,8 +81,11 @@ exports.handler = async (event) => {
             }
         }));
 
+        console.log('Email sent successfully');
+
         // 5. Publish to SNS (if configured)
         if (MANAGER_SNS_TOPIC) {
+            console.log('Publishing to SNS...');
             await snsClient.send(new PublishCommand({
                 TopicArn: MANAGER_SNS_TOPIC,
                 Message: messageBody,
@@ -80,7 +93,8 @@ exports.handler = async (event) => {
             }));
         }
 
-        return { statusCode: 200, body: 'Notifications sent successfully' };
+        console.log('NotifyManager completed successfully');
+        return { statusCode: 200, body: JSON.stringify({ message: 'Notifications sent successfully' }) };
 
     } catch (error) {
         console.error('Error sending notifications:', error);
