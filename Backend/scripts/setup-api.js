@@ -8,6 +8,8 @@ const apiGatewayClient = new ApiGatewayV2Client({ region: REGION });
 const lambdaClient = new LambdaClient({ region: REGION });
 const stsClient = new STSClient({ region: REGION });
 
+const VIRAJITH_CODESPACE_URL = "https://literate-halibut-wrxvg57jv7wrc96xv-5173.app.github.dev";
+
 async function setupApiGateway() {
     try {
         console.log("Fetching AWS Account Details...");
@@ -20,9 +22,10 @@ async function setupApiGateway() {
             Name: "SLAMS-API",
             ProtocolType: "HTTP",
             CorsConfiguration: {
-                AllowOrigins: ["*"],
+                AllowOrigins: [VIRAJITH_CODESPACE_URL],
                 AllowMethods: ["*"],
-                AllowHeaders: ["*"]
+                AllowHeaders: ["*"],
+                AllowCredentials: true
             }
         }));
         
