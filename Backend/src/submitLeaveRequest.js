@@ -2,7 +2,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, QueryCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { SFNClient, StartExecutionCommand, StopExecutionCommand } = require('@aws-sdk/client-sfn');
 const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
