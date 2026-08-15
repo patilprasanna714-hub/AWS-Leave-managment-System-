@@ -28,8 +28,10 @@ exports.handler = async (event) => {
         }
 
         if (method === 'GET' && path === '/approvals/pending') {
-            const manager_id = event.queryStringParameters?.manager_id;
-            return await getPendingApprovals(manager_id);
+            const qs = event.queryStringParameters || {};
+            const manager_id = qs.manager_id || qs.managerId || null;
+            const role = qs.role || qs.Role || qs.roleName || null;
+            return await getPendingApprovals(manager_id, role);
         }
 
         if (method === 'GET' && path === '/calendar') {
@@ -85,8 +87,28 @@ async function getLeaveHistory(employee_id) {
     }
 }
 
-async function getPendingApprovals(manager_id) {
+async function getPendingApprovals(manager_id, role) {
     try {
+        const roleNormalized = typeof role === 'string' ? role.trim().toLowerCase() : null;
+        if (roleNormalized && roleNormalized.startsWith('hr')) {
+            console.log('Fetching pending HR approvals (role param detected)');
+
+            // Use a Scan + FilterExpression for status=PENDING_HR to avoid relying on index key shapes.
+            const result = await ddbDocClient.send(new ScanCommand({
+                TableName: 'leave_requests',
+                FilterExpression: '#status = :status',
+                ExpressionAttributeNames: { '#status': 'status' },
+                ExpressionAttributeValues: { ':status': 'PENDING_HR' }
+            }));
+
+            console.log(`Successfully fetched pending HR approvals: ${JSON.stringify(result.Items)}`);
+            return {
+                statusCode: 200,
+                body: JSON.stringify(result.Items || []),
+                headers: { 'Content-Type': 'application/json' }
+            };
+        }
+
         if (!manager_id) {
             return { statusCode: 400, body: JSON.stringify({ error: 'Missing manager_id' }), headers: { 'Content-Type': 'application/json' } };
         }
@@ -106,7 +128,7 @@ async function getPendingApprovals(manager_id) {
             headers: { 'Content-Type': 'application/json' }
         };
     } catch (error) {
-        console.error(`Error fetching pending approvals for ${manager_id}:`, error);
+        console.error(`Error fetching pending approvals for ${manager_id || role}:`, error);
         throw error;
     }
 }
