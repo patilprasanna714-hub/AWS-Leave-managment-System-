@@ -40,6 +40,10 @@ exports.handler = async (event) => {
             return await getCalendar(startDate, endDate);
         }
 
+        if (method === 'GET' && path === '/reports/leave-summary') {
+            return await getLeaveReport();
+        }
+
         return { statusCode: 404, body: JSON.stringify({ error: 'Not Found' }) };
     } catch (error) {
         console.error('Error in reports/calendar lambda:', error);
@@ -157,4 +161,71 @@ async function getCalendar(startDate, endDate) {
         console.error(`Error fetching calendar data:`, error);
         throw error;
     }
+}
+
+async function getLeaveReport() {
+    try {
+        console.log('Fetching leave report (CSV)');
+        
+        // Scan all leave requests from the table
+        const result = await ddbDocClient.send(new ScanCommand({
+            TableName: 'leave_requests'
+        }));
+
+        const requests = result.Items || [];
+        
+        // Convert to CSV format
+        const csvContent = generateLeaveCSV(requests);
+        
+        console.log(`Successfully generated leave report CSV with ${requests.length} records`);
+        
+        return { 
+            statusCode: 200, 
+            body: csvContent,
+            headers: { 
+                'Content-Type': 'text/csv',
+                'Content-Disposition': 'attachment; filename="leave-summary.csv"'
+            }
+        };
+    } catch (error) {
+        console.error('Error fetching leave report:', error);
+        throw error;
+    }
+}
+
+function generateLeaveCSV(requests) {
+    if (!requests || requests.length === 0) {
+        return 'Employee ID,Employee Name,Leave Type,Start Date,End Date,Status,Manager ID,Days\n';
+    }
+
+    // CSV Header
+    const headers = ['Employee ID', 'Employee Name', 'Leave Type', 'Start Date', 'End Date', 'Status', 'Manager ID', 'Days'];
+    const rows = [headers.join(',')];
+
+    // Add data rows
+    for (const req of requests) {
+        const row = [
+            req.employee_id || '',
+            req.employee_name || '',
+            req.leave_type || '',
+            req.start_date || '',
+            req.end_date || '',
+            req.status || '',
+            req.manager_id || '',
+            req.days || ''
+        ];
+        
+        // Escape and quote fields that contain commas or quotes
+        const escapedRow = row.map(field => {
+            const str = String(field);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        });
+        
+        rows.push(escapedRow.join(','));
+    }
+
+    return rows.join('\n');
 }
