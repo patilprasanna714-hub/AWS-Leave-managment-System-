@@ -195,14 +195,18 @@ export async function cancelLeaveRequest(requestId) {
 // MANAGER
 // ============================================================
 
-// GET /approvals/pending?manager_id={manager_id}
-export async function getPendingApprovals(managerId) {
-  if (!managerId) {
-    throw new Error('Manager ID is required.');
+// GET /approvals/pending?manager_id={manager_id} or ?role=HRAdmin
+export async function getPendingApprovals(target) {
+  if (!target) {
+    throw new Error('Approval target is required.');
+  }
+
+  if (target === 'HRAdmin') {
+    return apiRequest('/approvals/pending?role=HRAdmin');
   }
 
   const params = new URLSearchParams({
-    manager_id: managerId,
+    manager_id: target,
   });
 
   return apiRequest(

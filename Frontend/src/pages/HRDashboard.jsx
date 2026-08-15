@@ -24,7 +24,7 @@ export default function HRDashboard() {
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
 
     const [p, a, c] = await Promise.all([
-      getPendingApprovals(user.id || user.employee_id || 'MGR-01'),
+      getPendingApprovals(user.role || 'HRAdmin'),
       getCalendar(start, end),
       getLeaveConfig()
     ]);
