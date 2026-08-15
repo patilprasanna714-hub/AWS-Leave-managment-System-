@@ -1,5 +1,5 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, UpdateCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { SFNClient, SendTaskSuccessCommand, SendTaskFailureCommand } = require('@aws-sdk/client-sfn');
 const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 const crypto = require('crypto');
@@ -98,9 +98,12 @@ exports.handler = async (event) => {
         } else if (requestId) {
             console.log(`Processing direct approval for request_id=${requestId}, action=${action}`);
 
-            const scanResult = await ddbDocClient.send(new (require('@aws-sdk/lib-dynamodb').ScanCommand)({
+            const scanResult = await ddbDocClient.send(new ScanCommand({
                 TableName: 'leave_requests',
-                FilterExpression: 'request_id = :requestId AND (status = :pendingManager OR status = :pendingHr)',
+                FilterExpression: 'request_id = :requestId AND (#status = :pendingManager OR #status = :pendingHr)',
+                ExpressionAttributeNames: {
+                    '#status': 'status'
+                },
                 ExpressionAttributeValues: {
                     ':requestId': requestId,
                     ':pendingManager': 'PENDING_MANAGER',
