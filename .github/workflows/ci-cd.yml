@@ -17,9 +17,14 @@ env:
   CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.SLAMS_CLOUDFRONT_DISTRIBUTION_ID }}
 
 jobs:
+
+  # ============================================================
+  # BUILD
+  # ============================================================
   build:
     name: Build
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,10 +57,15 @@ jobs:
           path: Frontend/dist
           if-no-files-found: error
 
+
+  # ============================================================
+  # TEST
+  # ============================================================
   test:
     name: Test
     runs-on: ubuntu-latest
     needs: build
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -81,21 +91,33 @@ jobs:
           done
 
       - name: Validate Python syntax
-        run: python -m py_compile Backend/src/submitLeaveRequest.py
+        run: |
+          python -m py_compile Backend/src/submitLeaveRequest.py
 
       - name: Validate Step Functions definition is valid JSON
-        run: node -e "JSON.parse(require('fs').readFileSync('Backend/step-functions.json', 'utf8')); console.log('step-functions.json: valid JSON')"
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('Backend/step-functions.json', 'utf8')); console.log('step-functions.json: valid JSON')"
 
+
+  # ============================================================
+  # DEPLOY
+  # ============================================================
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
     needs: [build, test]
+
     if: github.event_name != 'pull_request'
+
     environment: production
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # --------------------------------------------------------
+      # AWS OIDC
+      # --------------------------------------------------------
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -105,6 +127,10 @@ jobs:
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
+
+      # --------------------------------------------------------
+      # Node.js
+      # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -116,10 +142,10 @@ jobs:
         working-directory: Backend
         run: npm ci
 
-      - name: Add Lambda SDK clients used by source code
-        working-directory: Backend
-        run: npm install --no-save --package-lock=false @aws-sdk/client-sfn @aws-sdk/client-sesv2 @aws-sdk/client-sns
 
+      # --------------------------------------------------------
+      # Lambda Deployment
+      # --------------------------------------------------------
       - name: Deploy Lambda functions
         shell: bash
         run: |
@@ -138,23 +164,39 @@ jobs:
           mkdir -p .lambda-packages
 
           for function in "${functions[@]}"; do
+
             echo "Packaging $function"
+
             rm -rf ".lambda-packages/$function"
+
             mkdir -p ".lambda-packages/$function"
-            cp "Backend/src/$function.js" ".lambda-packages/$function/index.js"
-            cp -R Backend/node_modules ".lambda-packages/$function/node_modules"
+
+            cp \
+              "Backend/src/$function.js" \
+              ".lambda-packages/$function/index.js"
+
+            cp -R \
+              Backend/node_modules \
+              ".lambda-packages/$function/node_modules"
+
             (
               cd ".lambda-packages/$function"
               zip -qr "../$function.zip" .
             )
 
             echo "Updating Lambda $function"
+
             aws lambda update-function-code \
               --function-name "$function" \
               --zip-file "fileb://.lambda-packages/$function.zip" \
               --publish
+
           done
 
+
+      # --------------------------------------------------------
+      # Frontend Deployment
+      # --------------------------------------------------------
       - name: Download frontend artifact
         uses: actions/download-artifact@v4
         with:
@@ -163,8 +205,15 @@ jobs:
 
       - name: Deploy frontend to S3
         if: env.FRONTEND_BUCKET != ''
-        run: aws s3 sync Frontend/dist "s3://$FRONTEND_BUCKET" --delete
+        run: |
+          aws s3 sync \
+            Frontend/dist \
+            "s3://$FRONTEND_BUCKET" \
+            --delete
 
       - name: Invalidate CloudFront cache
         if: env.CLOUDFRONT_DISTRIBUTION_ID != ''
-        run: aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths '/*'
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths '/*'
